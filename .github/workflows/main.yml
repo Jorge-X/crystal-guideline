@@ -1,0 +1,79 @@
+
+name: Build Crystal Guideline
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: "URL direta do APK original (opcional)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Android ARM64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código-fonte
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar Android NDK
+        shell: bash
+        run: |
+          sdkmanager "ndk;26.3.11579264"
+
+          echo "NDK_PATH=$ANDROID_SDK_ROOT/ndk/26.3.11579264" >> "$GITHUB_ENV"
+
+      - name: Instalar dependências de compilação
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential clang make zip unzip
+
+      - name: Compilar projeto
+        shell: bash
+        run: |
+          chmod +x build.sh
+          ./build.sh
+
+      - name: Baixar APK original (opcional)
+        if: ${{ inputs.apk_url != '' }}
+        env:
+          APK_URL: ${{ inputs.apk_url }}
+        shell: bash
+        run: |
+          curl -fL --retry 3 "$APK_URL" -o 8ballpool.apk
+          test -s 8ballpool.apk
+
+      - name: Aplicar patch ao APK (opcional)
+        if: ${{ inputs.apk_url != '' }}
+        shell: bash
+        run: |
+          chmod +x patch.sh
+          ./patch.sh 8ballpool.apk
+
+      - name: Publicar artefatos
+        uses: actions/upload-artifact@v4
+        with:
+          name: crystal-guideline-android-arm64
+          path: |
+            dist/
+            build/
+            libs/
+            obj/
+            **/*.so
+          if-no-files-found: warn
+          retention-days: 7
